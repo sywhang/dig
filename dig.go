@@ -201,7 +201,29 @@ func FillProvideInfo(info *ProvideInfo) ProvideOption {
 // An InvokeOption modifies the default behavior of Invoke. It's included for
 // future functionality; currently, there are no concrete implementations.
 type InvokeOption interface {
-	unimplemented()
+	applyInvokeOption(*invokeOptions)
+}
+
+type invokeOptions struct {
+	Info *InvokeInfo
+}
+
+type invokeOptionFunc func(*invokeOptions)
+
+func (f invokeOptionFunc) applyInvokeOption(opts *invokeOptions) { f(opts) }
+
+// InvokeInfo provides information about an Invoke'd function.
+type InvokeInfo struct {
+	Inputs       []*Input
+	ParamValues  []*reflect.Value
+	ReturnValues []*reflect.Value
+}
+
+// FillInvokeInfo is an InvokeOption that writes info on an Invoke'd function.
+func FillInvokeInfo(info *InvokeInfo) InvokeOption {
+	return invokeOptionFunc(func(opts *invokeOptions) {
+		opts.Info = info
+	})
 }
 
 // Container is a directed acyclic graph of types and their dependencies.
@@ -482,6 +504,11 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 		return errf("can't invoke non-function %v (type %v)", function, ftype)
 	}
 
+	var options invokeOptions
+	for _, o := range opts {
+		o.applyInvokeOption(&options)
+	}
+
 	pl, err := newParamList(ftype)
 	if err != nil {
 		return err
@@ -508,6 +535,30 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 		}
 	}
 	returned := c.invokerFn(reflect.ValueOf(function), args)
+
+	// If FillInvokeInfo option was specified, fill the info
+	// before returning.
+	if info := options.Info; info != nil {
+		info.Inputs = make([]*Input, len(pl.DotParam()))
+		info.ParamValues = make([]*reflect.Value, len(args))
+		info.ReturnValues = make([]*reflect.Value, len(returned))
+
+		for i, param := range pl.DotParam() {
+			info.Inputs[i] = &Input{
+				t:        param.Type,
+				optional: param.Optional,
+				name:     param.Name,
+				group:    param.Group,
+			}
+		}
+		for i, arg := range args {
+			info.ParamValues[i] = &arg
+		}
+		for i, ret := range returned {
+			info.ReturnValues[i] = &ret
+		}
+	}
+
 	if len(returned) == 0 {
 		return nil
 	}
