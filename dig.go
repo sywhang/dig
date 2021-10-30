@@ -32,6 +32,7 @@ import (
 
 	"go.uber.org/dig/internal/digreflect"
 	"go.uber.org/dig/internal/dot"
+	"go.uber.org/dig/internal/graph"
 )
 
 const (
@@ -295,7 +296,8 @@ type Container struct {
 	providers map[key][]*node
 
 	// All nodes in the container.
-	nodes []*node
+	nodes    []*node
+	idToNode map[dot.CtorID]*node
 
 	// Values that have already been generated in the container.
 	values map[key]reflect.Value
@@ -388,6 +390,7 @@ func New(opts ...Option) *Container {
 		providers: make(map[key][]*node),
 		values:    make(map[key]reflect.Value),
 		groups:    make(map[key][]reflect.Value),
+		idToNode:  make(map[dot.CtorID]*node),
 		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
 		invokerFn: defaultInvoker,
 	}
@@ -642,19 +645,27 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 
 	for k := range keys {
 		c.isVerifiedAcyclic = false
-		oldProviders := c.providers[k]
+		//oldProviders := c.providers[k]
 		c.providers[k] = append(c.providers[k], n)
 
 		if c.deferAcyclicVerification {
 			continue
 		}
-		if err := verifyAcyclic(c, n, k); err != nil {
+
+		/* if err := verifyAcyclic(c, n, k); err != nil {
 			c.providers[k] = oldProviders
 			return err
-		}
+		}*/
 		c.isVerifiedAcyclic = true
 	}
+
 	c.nodes = append(c.nodes, n)
+	c.idToNode[n.ID()] = n
+	c.isVerifiedAcyclic = false
+	if graph.HasCycle(c, int64(n.ID())) {
+		return errf("this function introduces a cycle")
+	}
+	c.isVerifiedAcyclic = true
 
 	// Record introspection info for caller if Info option is specified
 	if info := opts.Info; info != nil {
@@ -705,6 +716,42 @@ func (c *Container) findAndValidateResults(n *node) (map[key]struct{}, error) {
 		keys[k] = struct{}{}
 	}
 	return keys, nil
+}
+
+func (c *Container) Count() int {
+	return len(c.nodes)
+}
+
+func (c *Container) EdgesFrom(n int64) []int64 {
+	node := c.idToNode[dot.CtorID(n)]
+	if node == nil {
+		return nil
+	}
+	providers := c.collectNodeParams(node.ParamList().Params...)
+	edges := make([]int64, len(providers))
+	for i, provider := range providers {
+		edges[i] = int64(provider.ID())
+	}
+	return edges
+}
+
+func (c *Container) collectNodeParams(params ...param) []provider {
+	var allProviders []provider
+	for _, param := range params {
+		switch p := param.(type) {
+		case paramSingle:
+			allProviders = append(allProviders, c.getValueProviders(p.Name, p.Type)...)
+		case paramGroupedSlice:
+			allProviders = append(allProviders, c.getGroupProviders(p.Group, p.Type.Elem())...)
+		case paramObject:
+			for _, f := range p.Fields {
+				allProviders = append(allProviders, c.collectNodeParams(f.Param)...)
+			}
+		case paramList:
+			allProviders = append(allProviders, c.collectNodeParams(p.Params...)...)
+		}
+	}
+	return allProviders
 }
 
 // Visits the results of a node and compiles a collection of all the keys
