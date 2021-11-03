@@ -30,14 +30,17 @@ type Graph interface {
 	EdgesFrom(i int) []int
 }
 
-func HasCycle(g Graph, n int) bool {
+// HasCycle checks whether the given graph contains a cycle when traversing
+// the graph via DFS, starting from n-th node.
+// If a cycle is detected, a slice containing the nodes in the cycle is returned.
+func HasCycle(g Graph, n int) (bool, []int) {
 	visited := make(map[int]interface{})
 	onStack := make(map[int]bool)
-	hc := hasCycleHelp(g, n, visited, onStack)
-	return hc
+	hc, cycle := hasCycleHelp(g, n, visited, onStack)
+	return hc, cycle
 }
 
-func hasCycleHelp(g Graph, n int, visited map[int]interface{}, onStack map[int]bool) bool {
+func hasCycleHelp(g Graph, n int, visited map[int]interface{}, onStack map[int]bool) (bool, []int) {
 	visited[n] = struct{}{}
 	onStack[n] = true
 

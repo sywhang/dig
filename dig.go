@@ -609,13 +609,11 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 }
 
 func (c *Container) verifyAcyclic() error {
-	visited := make(map[key]struct{})
-	for _, n := range c.nodes {
-		if err := detectCycles(n, c, nil /* path */, visited); err != nil {
+	for i := 0; i < len(c.nodes); i++ {
+		if graph.HasCycle(c, i) {
 			return errf("cycle detected in dependency graph", err)
 		}
 	}
-
 	c.isVerifiedAcyclic = true
 	return nil
 }
