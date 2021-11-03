@@ -27,17 +27,17 @@ type Graph interface {
 	Count() int
 
 	// Returns the indices of nodes that node i points to.
-	EdgesFrom(i int64) []int64
+	EdgesFrom(i int) []int
 }
 
-func HasCycle(g Graph, n int64) bool {
-	visited := make(map[int64]interface{})
-	onStack := make(map[int64]bool)
+func HasCycle(g Graph, n int) bool {
+	visited := make(map[int]interface{})
+	onStack := make(map[int]bool)
 	hc := hasCycleHelp(g, n, visited, onStack)
 	return hc
 }
 
-func hasCycleHelp(g Graph, n int64, visited map[int64]interface{}, onStack map[int64]bool) bool {
+func hasCycleHelp(g Graph, n int, visited map[int]interface{}, onStack map[int]bool) bool {
 	visited[n] = struct{}{}
 	onStack[n] = true
 

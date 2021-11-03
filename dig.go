@@ -296,8 +296,7 @@ type Container struct {
 	providers map[key][]*node
 
 	// All nodes in the container.
-	nodes    []*node
-	idToNode map[dot.CtorID]*node
+	nodes []*node
 
 	// Values that have already been generated in the container.
 	values map[key]reflect.Value
@@ -365,6 +364,9 @@ type provider interface {
 	// ID is a unique numerical identifier for this provider.
 	ID() dot.CtorID
 
+	// Order returns the order this provider was provided to the container.
+	Order() int
+
 	// Location returns where this constructor was defined.
 	Location() *digreflect.Func
 
@@ -390,7 +392,6 @@ func New(opts ...Option) *Container {
 		providers: make(map[key][]*node),
 		values:    make(map[key]reflect.Value),
 		groups:    make(map[key][]reflect.Value),
-		idToNode:  make(map[dot.CtorID]*node),
 		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
 		invokerFn: defaultInvoker,
 	}
@@ -622,6 +623,7 @@ func (c *Container) verifyAcyclic() error {
 func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 	n, err := newNode(
 		ctor,
+		len(c.nodes),
 		nodeOptions{
 			ResultName:  opts.Name,
 			ResultGroup: opts.Group,
@@ -644,28 +646,18 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 	}
 
 	for k := range keys {
-		c.isVerifiedAcyclic = false
-		//oldProviders := c.providers[k]
 		c.providers[k] = append(c.providers[k], n)
-
-		if c.deferAcyclicVerification {
-			continue
-		}
-
-		/* if err := verifyAcyclic(c, n, k); err != nil {
-			c.providers[k] = oldProviders
-			return err
-		}*/
-		c.isVerifiedAcyclic = true
 	}
 
 	c.nodes = append(c.nodes, n)
-	c.idToNode[n.ID()] = n
 	c.isVerifiedAcyclic = false
-	if graph.HasCycle(c, int64(n.ID())) {
-		return errf("this function introduces a cycle")
+
+	if !c.deferAcyclicVerification {
+		if graph.HasCycle(c, n.Order()) {
+			return errf("this function introduces a cycle")
+		}
+		c.isVerifiedAcyclic = true
 	}
-	c.isVerifiedAcyclic = true
 
 	// Record introspection info for caller if Info option is specified
 	if info := opts.Info; info != nil {
@@ -722,15 +714,15 @@ func (c *Container) Count() int {
 	return len(c.nodes)
 }
 
-func (c *Container) EdgesFrom(n int64) []int64 {
-	node := c.idToNode[dot.CtorID(n)]
+func (c *Container) EdgesFrom(n int) []int {
+	node := c.nodes[n]
 	if node == nil {
 		return nil
 	}
 	providers := c.collectNodeParams(node.ParamList().Params...)
-	edges := make([]int64, len(providers))
+	edges := make([]int, len(providers))
 	for i, provider := range providers {
-		edges[i] = int64(provider.ID())
+		edges[i] = provider.Order()
 	}
 	return edges
 }
@@ -872,6 +864,9 @@ type node struct {
 	// id uniquely identifies the constructor that produces a node.
 	id dot.CtorID
 
+	// order is the order in which this constructor was provided.
+	order int
+
 	// Whether the constructor owned by this node was already called.
 	called bool
 
@@ -891,7 +886,7 @@ type nodeOptions struct {
 	Location    *digreflect.Func
 }
 
-func newNode(ctor interface{}, opts nodeOptions) (*node, error) {
+func newNode(ctor interface{}, order int, opts nodeOptions) (*node, error) {
 	cval := reflect.ValueOf(ctor)
 	ctype := cval.Type()
 	cptr := cval.Pointer()
@@ -923,6 +918,7 @@ func newNode(ctor interface{}, opts nodeOptions) (*node, error) {
 		ctype:      ctype,
 		location:   location,
 		id:         dot.CtorID(cptr),
+		order:      order,
 		paramList:  params,
 		resultList: results,
 	}, err
@@ -932,6 +928,7 @@ func (n *node) Location() *digreflect.Func { return n.location }
 func (n *node) ParamList() paramList       { return n.paramList }
 func (n *node) ResultList() resultList     { return n.resultList }
 func (n *node) ID() dot.CtorID             { return n.id }
+func (n *node) Order() int                 { return n.order }
 
 // Call calls this node's constructor if it hasn't already been called and
 // injects any values produced by it into the provided container.

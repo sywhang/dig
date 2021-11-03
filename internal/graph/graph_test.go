@@ -7,12 +7,12 @@ import (
 )
 
 type testGraph struct {
-	edges map[int64][]int64
+	edges map[int][]int
 }
 
 func newTestGraph() *testGraph {
 	return &testGraph{
-		edges: make(map[int64][]int64),
+		edges: make(map[int][]int),
 	}
 }
 
@@ -20,13 +20,13 @@ func (g *testGraph) Count() int {
 	return len(g.edges)
 }
 
-func (g *testGraph) EdgesFrom(i int64) []int64 {
+func (g *testGraph) EdgesFrom(i int) []int {
 	return g.edges[i]
 }
 
-func (g *testGraph) AddEdge(from int64, to int64) {
+func (g *testGraph) AddEdge(from int, to int) {
 	if _, ok := g.edges[from]; !ok {
-		g.edges[from] = []int64{to}
+		g.edges[from] = []int{to}
 	} else {
 		g.edges[from] = append(g.edges[from], to)
 	}

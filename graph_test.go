@@ -376,7 +376,7 @@ func TestNewDotCtor(t *testing.T) {
 	type t1 struct{}
 	type t2 struct{}
 
-	n, err := newNode(func(A t1) t2 { return t2{} }, nodeOptions{})
+	n, err := newNode(func(A t1) t2 { return t2{} }, 0, nodeOptions{})
 	require.NoError(t, err)
 
 	n.location = &digreflect.Func{
