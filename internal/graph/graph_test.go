@@ -42,7 +42,9 @@ func TestGraphWithCycles(t *testing.T) {
 		g := newTestGraph()
 		g.AddEdge(0, 0)
 
-		assert.True(t, HasCycle(g, 0))
+		ok, cycle := VerifyAcyclic(g, 0)
+		assert.False(t, ok)
+		verifyPath(t, []int{0, 0}, cycle)
 	})
 
 	t.Run("cycle between 3 nodes", func(t *testing.T) {
@@ -51,11 +53,12 @@ func TestGraphWithCycles(t *testing.T) {
 		g.AddEdge(1, 2)
 
 		// 0->1->2, no cycles yet
-		assert.False(t, HasCycle(g, 0))
+		ok, _ := VerifyAcyclic(g, 0)
+		assert.True(t, ok)
 
 		g.AddEdge(2, 0)
-		assert.True(t, HasCycle(g, 0))
-		assert.True(t, HasCycle(g, 2))
+		ok, _ = VerifyAcyclic(g, 0)
+		assert.False(t, ok)
 	})
 }
 
@@ -65,7 +68,8 @@ func TestGraphWithoutCycles(t *testing.T) {
 		g.AddEdge(0, 1)
 		g.AddEdge(1, 2)
 		g.AddEdge(2, 3)
-		assert.False(t, HasCycle(g, 0))
+		ok, _ := VerifyAcyclic(g, 0)
+		assert.True(t, ok)
 	})
 
 	t.Run("no cycle 2", func(t *testing.T) {
@@ -74,7 +78,8 @@ func TestGraphWithoutCycles(t *testing.T) {
 		g.AddEdge(1, 2)
 		g.AddEdge(1, 3)
 		g.AddEdge(2, 3)
-		assert.False(t, HasCycle(g, 0))
+		ok, _ := VerifyAcyclic(g, 0)
+		assert.True(t, ok)
 	})
 
 	t.Run("no cycle 3", func(t *testing.T) {
@@ -89,10 +94,15 @@ func TestGraphWithoutCycles(t *testing.T) {
 		g.AddEdge(2, 3)
 		g.AddEdge(2, 4)
 		g.AddEdge(3, 4)
-		assert.False(t, HasCycle(g, 0))
-		assert.False(t, HasCycle(g, 1))
-		assert.False(t, HasCycle(g, 2))
-		assert.False(t, HasCycle(g, 3))
-		assert.False(t, HasCycle(g, 4))
+		ok, _ := VerifyAcyclic(g, 0)
+		assert.True(t, ok)
 	})
+}
+
+func verifyPath(t *testing.T, expected []int, actual []int) {
+	assert.Equal(t, len(expected), len(actual), "expected the length of cycle to be the same")
+
+	for i := 0; i < len(actual); i++ {
+		assert.Equal(t, expected[i], actual[i])
+	}
 }

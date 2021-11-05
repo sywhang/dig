@@ -30,29 +30,51 @@ type Graph interface {
 	EdgesFrom(i int) []int
 }
 
-// HasCycle checks whether the given graph contains a cycle when traversing
-// the graph via DFS, starting from n-th node.
-// If a cycle is detected, a slice containing the nodes in the cycle is returned.
-func HasCycle(g Graph, n int) (bool, []int) {
-	visited := make(map[int]interface{})
-	onStack := make(map[int]bool)
-	hc, cycle := hasCycleHelp(g, n, visited, onStack)
-	return hc, cycle
+// struct for keeping track of useful info needed for cycle detection.
+type cycleDetectInfo struct {
+	visited   map[int]interface{}
+	onStack   map[int]bool
+	backtrack map[int]int
 }
 
-func hasCycleHelp(g Graph, n int, visited map[int]interface{}, onStack map[int]bool) (bool, []int) {
-	visited[n] = struct{}{}
-	onStack[n] = true
+// VerifyAcyclic checks whether the given graph contains a cycle when traversing
+// the graph via DFS, starting from n-th node.
+// If a cycle is detected, a slice containing the nodes in the cycle is returned.
+func VerifyAcyclic(g Graph, n int) (bool, []int) {
+	info := &cycleDetectInfo{
+		visited:   make(map[int]interface{}),
+		onStack:   make(map[int]bool),
+		backtrack: make(map[int]int),
+	}
+	ok := isAcyclic(g, n, info)
+	cycle := getCyclePath(n, info.backtrack)
+	return ok, cycle
+}
+
+func isAcyclic(g Graph, n int, info *cycleDetectInfo) bool {
+	info.visited[n] = struct{}{}
+	info.onStack[n] = true
 
 	for _, neighbor := range g.EdgesFrom(n) {
-		if _, ok := visited[neighbor]; !ok {
-			if hasCycleHelp(g, neighbor, visited, onStack) {
-				return true
+		info.backtrack[neighbor] = n
+		if _, ok := info.visited[neighbor]; !ok {
+			if !isAcyclic(g, neighbor, info) {
+				return false
 			}
-		} else if os, ok := onStack[neighbor]; os && ok {
-			return true
+		} else if os, ok := info.onStack[neighbor]; os && ok {
+			return false
 		}
 	}
-	onStack[n] = false
-	return false
+	info.onStack[n] = false
+	return true
+}
+
+func getCyclePath(start int, bt map[int]int) []int {
+	path := []int{start}
+
+	for curr, ok := bt[start]; ok && curr != start; curr = bt[curr] {
+		path = append([]int{curr}, path...)
+	}
+	path = append([]int{start}, path...)
+	return path
 }

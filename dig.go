@@ -608,10 +608,23 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 	return nil
 }
 
+func (c *Container) cycleDetectedErr(cycle []int) error {
+	var path []cycleEntry
+	for _, nodeIdx := range cycle {
+		path = append(path, cycleEntry{
+			Key: key{
+				t: c.nodes[nodeIdx].CType(),
+			},
+			Func: c.nodes[nodeIdx].Location(),
+		})
+	}
+	return errCycleDetected{Path: path}
+}
+
 func (c *Container) verifyAcyclic() error {
 	for i := 0; i < len(c.nodes); i++ {
-		if graph.HasCycle(c, i) {
-			return errf("cycle detected in dependency graph", err)
+		if ok, cycle := graph.VerifyAcyclic(c, i); !ok {
+			return errf("cycle detected in dependency graph", c.cycleDetectedErr(cycle))
 		}
 	}
 	c.isVerifiedAcyclic = true
@@ -651,8 +664,8 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 	c.isVerifiedAcyclic = false
 
 	if !c.deferAcyclicVerification {
-		if graph.HasCycle(c, n.Order()) {
-			return errf("this function introduces a cycle")
+		if ok, cycle := graph.VerifyAcyclic(c, n.Order()); !ok {
+			return errf("this function introduces a cycle", c.cycleDetectedErr(cycle))
 		}
 		c.isVerifiedAcyclic = true
 	}
@@ -927,6 +940,7 @@ func (n *node) ParamList() paramList       { return n.paramList }
 func (n *node) ResultList() resultList     { return n.resultList }
 func (n *node) ID() dot.CtorID             { return n.id }
 func (n *node) Order() int                 { return n.order }
+func (n *node) CType() reflect.Type        { return n.ctype }
 
 // Call calls this node's constructor if it hasn't already been called and
 // injects any values produced by it into the provided container.
