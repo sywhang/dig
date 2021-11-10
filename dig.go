@@ -302,7 +302,7 @@ type Container struct {
 	values map[key]reflect.Value
 
 	// Values groups that have already been generated in the container.
-	groups map[key][]reflect.Value
+	groups map[key]*valueGroup
 
 	// Source of randomness.
 	rand *rand.Rand
@@ -315,6 +315,8 @@ type Container struct {
 
 	// invokerFn calls a function with arguments provided to Provide or Invoke.
 	invokerFn invokerFn
+
+	graphNodes []*graphNode
 }
 
 // containerWriter provides write access to the Container's underlying data
@@ -391,7 +393,7 @@ func New(opts ...Option) *Container {
 	c := &Container{
 		providers: make(map[key][]*node),
 		values:    make(map[key]reflect.Value),
-		groups:    make(map[key][]reflect.Value),
+		groups:    make(map[key]*valueGroup),
 		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
 		invokerFn: defaultInvoker,
 	}
@@ -478,14 +480,24 @@ func (c *Container) setValue(name string, t reflect.Type, v reflect.Value) {
 }
 
 func (c *Container) getValueGroup(name string, t reflect.Type) []reflect.Value {
-	items := c.groups[key{group: name, t: t}]
+	items := c.groups[key{group: name, t: t}].Items()
 	// shuffle the list so users don't rely on the ordering of grouped values
 	return shuffledCopy(c.rand, items)
 }
 
 func (c *Container) submitGroupedValue(name string, t reflect.Type, v reflect.Value) {
 	k := key{group: name, t: t}
-	c.groups[k] = append(c.groups[k], v)
+	if vg, ok := c.groups[k]; ok {
+		vg.AddValue(v)
+	} else {
+		vg := &valueGroup{
+			k:      k,
+			order:  len(c.graphNodes),
+			values: []reflect.Value{v},
+		}
+		c.groups[k] = vg
+		c.graphNodes = append(c.graphNodes, vg)
+	}
 }
 
 func (c *Container) getValueProviders(name string, t reflect.Type) []provider {
@@ -570,7 +582,7 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 		return errf("can't invoke non-function %v (type %v)", function, ftype)
 	}
 
-	pl, err := newParamList(ftype)
+	pl, err := newParamList(ftype, len(c.graphNodes))
 	if err != nil {
 		return err
 	}
@@ -634,7 +646,7 @@ func (c *Container) verifyAcyclic() error {
 func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 	n, err := newNode(
 		ctor,
-		len(c.nodes),
+		len(c.graphNodes),
 		nodeOptions{
 			ResultName:  opts.Name,
 			ResultGroup: opts.Group,
@@ -661,6 +673,7 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 	}
 
 	c.nodes = append(c.nodes, n)
+	c.graphNodes = append(c.graphNodes, n)
 	c.isVerifiedAcyclic = false
 
 	if !c.deferAcyclicVerification {
@@ -726,9 +739,16 @@ func (c *Container) Count() int {
 }
 
 func (c *Container) EdgesFrom(n int) []int {
-	node := c.nodes[n]
-	if node == nil {
+	graphNode := c.graphNodes[n]
+	if graphNode == nil {
 		return nil
+	}
+
+	var providers []provider
+
+	switch n := graphNode.(type) {
+	case node:
+		providers = c.collectNodeParams(node.ParamList().Params...)
 	}
 	providers := c.collectNodeParams(node.ParamList().Params...)
 	edges := make([]int, len(providers))
@@ -1093,4 +1113,34 @@ func shuffledCopy(rand *rand.Rand, items []reflect.Value) []reflect.Value {
 		newItems[i] = items[j]
 	}
 	return newItems
+}
+
+type graphNode interface {
+	// Returns the list of graphNodes that this node depends on
+	DependsOn() []int
+
+	// Order of this graphNode that uniquely identifies this graphNode.
+	Order() int
+}
+
+type valueGroup struct {
+	k      key
+	order  int
+	values []reflect.Value
+}
+
+func (vg *valueGroup) DependsOn() []int {
+	// TODO: figure out how to get the orders of the providers here.
+}
+
+func (vg *valueGroup) Order() int {
+	return vg.order
+}
+
+func (vg *valueGroup) Items() []reflect.Value {
+	return vg.values
+}
+
+func (vg *valueGroup) AddValue(v reflect.Value) {
+	vg.values = append(vg.values, v)
 }
