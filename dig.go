@@ -289,8 +289,9 @@ type InvokeOption interface {
 	unimplemented()
 }
 
-// Container is a directed acyclic graph of types and their dependencies.
-type Container struct {
+// Scope is a directed acyclic graph of types and their dependencies. Any
+// actions taken on a Scope is limited to itself and its descendents, if any.
+type Scope struct {
 	// Mapping from key to all the constructor node that can provide a value for that
 	// key.
 	providers map[key][]*constructorNode
@@ -316,6 +317,8 @@ type Container struct {
 	invokerFn invokerFn
 
 	gh *graphHolder
+
+	childScopes []*Scope
 }
 
 type graphHolder struct {
@@ -325,8 +328,8 @@ type graphHolder struct {
 	// Maps each graphNode to its order.
 	orders map[key]int
 
-	// Container whose graph this holder contains.
-	c *Container
+	// Scope whose graph this holder contains.
+	c *Scope
 }
 
 func (gh *graphHolder) Order() int {
@@ -650,6 +653,11 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 	}
 
 	return nil
+}
+
+// Scope creates a Scope from the Container.
+func (c *Container) Scope(...ScopeOption) *Scope {
+
 }
 
 func (c *Container) newGraphNode(k key, wrapped interface{}) {
