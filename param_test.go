@@ -30,10 +30,10 @@ import (
 )
 
 func TestParamListBuild(t *testing.T) {
-	p, err := newParamList(reflect.TypeOf(func() io.Writer { return nil }), New())
+	p, err := newParamList(reflect.TypeOf(func() io.Writer { return nil }), New().Scope())
 	require.NoError(t, err)
 	assert.Panics(t, func() {
-		p.Build(New())
+		p.Build(New().Scope())
 	})
 }
 
@@ -57,7 +57,7 @@ func TestParamObjectSuccess(t *testing.T) {
 		} `name:"bar"`
 	}
 
-	po, err := newParamObject(reflect.TypeOf(in{}), New())
+	po, err := newParamObject(reflect.TypeOf(in{}), New().Scope())
 	require.NoError(t, err)
 
 	require.Len(t, po.Fields, 4)
@@ -112,7 +112,7 @@ func TestParamObjectWithUnexportedFieldsSuccess(t *testing.T) {
 		t2 type2
 	}
 
-	po, err := newParamObject(reflect.TypeOf(in{}), New())
+	po, err := newParamObject(reflect.TypeOf(in{}), New().Scope())
 	require.NoError(t, err)
 
 	require.Len(t, po.Fields, 1)
@@ -134,7 +134,7 @@ func TestParamObjectFailure(t *testing.T) {
 			a2 A
 		}
 
-		_, err := newParamObject(reflect.TypeOf(in{}), New())
+		_, err := newParamObject(reflect.TypeOf(in{}), New().Scope())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(),
 			`bad field "a2" of dig.in: unexported fields not allowed in dig.In, did you mean to export "a2" (dig.A)`)
@@ -149,7 +149,7 @@ func TestParamObjectFailure(t *testing.T) {
 			a2 A
 		}
 
-		_, err := newParamObject(reflect.TypeOf(in{}), New())
+		_, err := newParamObject(reflect.TypeOf(in{}), New().Scope())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(),
 			`bad field "a2" of dig.in: unexported fields not allowed in dig.In, did you mean to export "a2" (dig.A)`)
@@ -164,7 +164,7 @@ func TestParamObjectFailure(t *testing.T) {
 			a2 A
 		}
 
-		_, err := newParamObject(reflect.TypeOf(in{}), New())
+		_, err := newParamObject(reflect.TypeOf(in{}), New().Scope())
 		require.Error(t, err)
 		assert.Contains(t, err.Error(),
 			`invalid value "foo" for "ignore-unexported" tag on field In: strconv.ParseBool: parsing "foo": invalid syntax`)
@@ -219,7 +219,7 @@ func TestParamGroupSliceErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			_, err := newParamObject(reflect.TypeOf(tt.shape), New())
+			_, err := newParamObject(reflect.TypeOf(tt.shape), New().Scope())
 			require.Error(t, err, "expected failure")
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})

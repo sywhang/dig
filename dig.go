@@ -60,6 +60,16 @@ type optionFunc func(*Container)
 
 func (f optionFunc) applyOption(c *Container) { f(c) }
 
+// ScopeOption configures a Scope. It's included for future functionality;
+// currently, there are no concrete implementations.
+type ScopeOption interface {
+	applyOption(*Scope)
+}
+
+type scopeOptionFunc func(*Scope)
+
+func (f scopeOptionFunc) applyOption(s *Scope) { f(s) }
+
 type provideOptions struct {
 	Name     string
 	Group    string
@@ -304,21 +314,53 @@ type Scope struct {
 	// Values groups that have already been generated in the container.
 	groups map[key][]reflect.Value
 
-	// Source of randomness.
-	rand *rand.Rand
-
 	// Flag indicating whether the graph has been checked for cycles.
 	isVerifiedAcyclic bool
-
-	// Defer acyclic check on provide until Invoke.
-	deferAcyclicVerification bool
 
 	// invokerFn calls a function with arguments provided to Provide or Invoke.
 	invokerFn invokerFn
 
+	// Source of randomness.
+	rand *rand.Rand
+
+	// A graphHolder contains all the graph nodes.
 	gh *graphHolder
 
+	// Parent of this Scope.
+	parentScope *Scope
+
+	// All the child scopes of this Scope.
 	childScopes []*Scope
+
+	// Defer acyclic check on provide until Invoke.
+	deferAcyclicVerification bool
+}
+
+type Container struct {
+	// Defer acyclic check on provide until Invoke.
+	deferAcyclicVerification bool
+
+	// scope is the "root" Scope that represents the
+	// root of the scope tree.
+	scope *Scope
+
+	// Source of randomness.
+	rand *rand.Rand
+
+	// invokerFn calls a function with arguments provided to Provide or Invoke.
+	invokerFn invokerFn
+}
+
+func (c *Container) Provide(constructor interface{}, opts ...ProvideOption) error {
+	return c.scope.Provide(constructor, opts...)
+}
+
+func (c *Container) Invoke(constructor interface{}, opts ...InvokeOption) error {
+	return c.scope.Invoke(constructor, opts...)
+}
+
+func (c *Container) createGraph() *dot.Graph {
+	return c.scope.createGraph()
 }
 
 type graphHolder struct {
@@ -329,7 +371,7 @@ type graphHolder struct {
 	orders map[key]int
 
 	// Scope whose graph this holder contains.
-	c *Scope
+	s *Scope
 }
 
 func (gh *graphHolder) Order() int {
@@ -347,7 +389,7 @@ func (gh *graphHolder) EdgesFrom(u int) []int {
 			orders = append(orders, getParamOrder(gh, param)...)
 		}
 	case *paramGroupedSlice:
-		providers := gh.c.getGroupProviders(w.Group, w.Type.Elem())
+		providers := gh.s.getGroupProviders(w.Group, w.Type.Elem())
 		for _, provider := range providers {
 			orders = append(orders, gh.orders[key{t: provider.CType()}])
 		}
@@ -428,20 +470,26 @@ type provider interface {
 
 // New constructs a Container.
 func New(opts ...Option) *Container {
-	c := &Container{
+	s := &Scope{
 		providers: make(map[key][]*constructorNode),
 		values:    make(map[key]reflect.Value),
 		groups:    make(map[key][]reflect.Value),
-		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
 		invokerFn: defaultInvoker,
+		rand:      rand.New(rand.NewSource(time.Now().UnixNano())),
+	}
+
+	c := &Container{
+		scope:                    s,
+		deferAcyclicVerification: false,
+		rand:                     s.rand,
 	}
 
 	gh := &graphHolder{
 		orders: make(map[key]int),
-		c:      c,
+		s:      s,
 	}
 
-	c.gh = gh
+	s.gh = gh
 
 	for _, opt := range opts {
 		opt.applyOption(c)
@@ -501,9 +549,9 @@ func dryInvoker(fn reflect.Value, _ []reflect.Value) []reflect.Value {
 	return results
 }
 
-func (c *Container) knownTypes() []reflect.Type {
-	typeSet := make(map[reflect.Type]struct{}, len(c.providers))
-	for k := range c.providers {
+func (s *Scope) knownTypes() []reflect.Type {
+	typeSet := make(map[reflect.Type]struct{}, len(s.providers))
+	for k := range s.providers {
 		typeSet[k.t] = struct{}{}
 	}
 
@@ -515,36 +563,36 @@ func (c *Container) knownTypes() []reflect.Type {
 	return types
 }
 
-func (c *Container) getValue(name string, t reflect.Type) (v reflect.Value, ok bool) {
-	v, ok = c.values[key{name: name, t: t}]
+func (s *Scope) getValue(name string, t reflect.Type) (v reflect.Value, ok bool) {
+	v, ok = s.values[key{name: name, t: t}]
 	return
 }
 
-func (c *Container) setValue(name string, t reflect.Type, v reflect.Value) {
-	c.values[key{name: name, t: t}] = v
+func (s *Scope) setValue(name string, t reflect.Type, v reflect.Value) {
+	s.values[key{name: name, t: t}] = v
 }
 
-func (c *Container) getValueGroup(name string, t reflect.Type) []reflect.Value {
-	items := c.groups[key{group: name, t: t}]
+func (s *Scope) getValueGroup(name string, t reflect.Type) []reflect.Value {
+	items := s.groups[key{group: name, t: t}]
 	// shuffle the list so users don't rely on the ordering of grouped values
-	return shuffledCopy(c.rand, items)
+	return shuffledCopy(s.rand, items)
 }
 
-func (c *Container) submitGroupedValue(name string, t reflect.Type, v reflect.Value) {
+func (s *Scope) submitGroupedValue(name string, t reflect.Type, v reflect.Value) {
 	k := key{group: name, t: t}
-	c.groups[k] = append(c.groups[k], v)
+	s.groups[k] = append(s.groups[k], v)
 }
 
-func (c *Container) getValueProviders(name string, t reflect.Type) []provider {
-	return c.getProviders(key{name: name, t: t})
+func (s *Scope) getValueProviders(name string, t reflect.Type) []provider {
+	return s.getProviders(key{name: name, t: t})
 }
 
-func (c *Container) getGroupProviders(name string, t reflect.Type) []provider {
-	return c.getProviders(key{group: name, t: t})
+func (s *Scope) getGroupProviders(name string, t reflect.Type) []provider {
+	return s.getProviders(key{group: name, t: t})
 }
 
-func (c *Container) getProviders(k key) []provider {
-	nodes := c.providers[k]
+func (s *Scope) getProviders(k key) []provider {
+	nodes := s.providers[k]
 	providers := make([]provider, len(nodes))
 	for i, n := range nodes {
 		providers[i] = n
@@ -556,6 +604,10 @@ func (c *Container) getProviders(k key) []provider {
 // running container in dry mode.
 func (c *Container) invoker() invokerFn {
 	return c.invokerFn
+}
+
+func (s *Scope) invoker() invokerFn {
+	return s.invokerFn
 }
 
 // Provide teaches the container how to build values of one or more types and
@@ -574,7 +626,7 @@ func (c *Container) invoker() invokerFn {
 // arguments and produce results as separate return values, Provide also
 // accepts constructors that specify dependencies as dig.In structs and/or
 // specify results as dig.Out structs.
-func (c *Container) Provide(constructor interface{}, opts ...ProvideOption) error {
+func (s *Scope) Provide(constructor interface{}, opts ...ProvideOption) error {
 	ctype := reflect.TypeOf(constructor)
 	if ctype == nil {
 		return errors.New("can't provide an untyped nil")
@@ -591,7 +643,7 @@ func (c *Container) Provide(constructor interface{}, opts ...ProvideOption) erro
 		return err
 	}
 
-	if err := c.provide(constructor, options); err != nil {
+	if err := s.provide(constructor, options); err != nil {
 		return errProvide{
 			Func:   digreflect.InspectFunc(constructor),
 			Reason: err,
@@ -608,7 +660,7 @@ func (c *Container) Provide(constructor interface{}, opts ...ProvideOption) erro
 //
 // The function may return an error to indicate failure. The error will be
 // returned to the caller as-is.
-func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
+func (s *Scope) Invoke(function interface{}, opts ...InvokeOption) error {
 	ftype := reflect.TypeOf(function)
 	if ftype == nil {
 		return errors.New("can't invoke an untyped nil")
@@ -617,32 +669,32 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 		return errf("can't invoke non-function %v (type %v)", function, ftype)
 	}
 
-	pl, err := newParamList(ftype, c)
+	pl, err := newParamList(ftype, s)
 	if err != nil {
 		return err
 	}
 
-	if err := shallowCheckDependencies(c, pl); err != nil {
+	if err := shallowCheckDependencies(s, pl); err != nil {
 		return errMissingDependencies{
 			Func:   digreflect.InspectFunc(function),
 			Reason: err,
 		}
 	}
 
-	if !c.isVerifiedAcyclic {
-		if ok, cycle := graph.IsAcyclic(c.gh); !ok {
-			return errf("cycle detected in dependency graph", c.cycleDetectedError(cycle))
+	if !s.isVerifiedAcyclic {
+		if ok, cycle := graph.IsAcyclic(s.gh); !ok {
+			return errf("cycle detected in dependency graph", s.cycleDetectedError(cycle))
 		}
 	}
 
-	args, err := pl.BuildList(c)
+	args, err := pl.BuildList(s)
 	if err != nil {
 		return errArgumentsFailed{
 			Func:   digreflect.InspectFunc(function),
 			Reason: err,
 		}
 	}
-	returned := c.invokerFn(reflect.ValueOf(function), args)
+	returned := s.invokerFn(reflect.ValueOf(function), args)
 	if len(returned) == 0 {
 		return nil
 	}
@@ -656,23 +708,23 @@ func (c *Container) Invoke(function interface{}, opts ...InvokeOption) error {
 }
 
 // Scope creates a Scope from the Container.
-func (c *Container) Scope(...ScopeOption) *Scope {
-
+func (c *Container) Scope(opt ...ScopeOption) *Scope {
+	return c.scope.Scope(opt...)
 }
 
-func (c *Container) newGraphNode(k key, wrapped interface{}) {
-	order := len(c.gh.allNodes)
-	c.gh.allNodes = append(c.gh.allNodes, &graphNode{
+func (s *Scope) newGraphNode(k key, wrapped interface{}) {
+	order := len(s.gh.allNodes)
+	s.gh.allNodes = append(s.gh.allNodes, &graphNode{
 		Order:   order,
 		Wrapped: wrapped,
 	})
-	c.gh.orders[k] = order
+	s.gh.orders[k] = order
 }
 
-func (c *Container) cycleDetectedError(cycle []int) error {
+func (s *Scope) cycleDetectedError(cycle []int) error {
 	var path []cycleEntry
 	for _, n := range cycle {
-		if n, ok := c.gh.allNodes[n].Wrapped.(*constructorNode); ok {
+		if n, ok := s.gh.allNodes[n].Wrapped.(*constructorNode); ok {
 			path = append(path, cycleEntry{
 				Key: key{
 					t: n.CType(),
@@ -684,10 +736,10 @@ func (c *Container) cycleDetectedError(cycle []int) error {
 	return errCycleDetected{Path: path}
 }
 
-func (c *Container) provide(ctor interface{}, opts provideOptions) error {
+func (s *Scope) provide(ctor interface{}, opts provideOptions) error {
 	n, err := newConstructorNode(
 		ctor,
-		c,
+		s,
 		constructorOptions{
 			ResultName:  opts.Name,
 			ResultGroup: opts.Group,
@@ -699,7 +751,7 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 		return err
 	}
 
-	keys, err := c.findAndValidateResults(n)
+	keys, err := s.findAndValidateResults(n)
 	if err != nil {
 		return err
 	}
@@ -710,17 +762,17 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 	}
 
 	for k := range keys {
-		c.providers[k] = append(c.providers[k], n)
+		s.providers[k] = append(s.providers[k], n)
 	}
 
-	c.isVerifiedAcyclic = false
-	if !c.deferAcyclicVerification {
-		if ok, cycle := graph.IsAcyclic(c.gh); !ok {
-			return errf("this function introduces a cycle", c.cycleDetectedError(cycle))
+	s.isVerifiedAcyclic = false
+	if !s.deferAcyclicVerification {
+		if ok, cycle := graph.IsAcyclic(s.gh); !ok {
+			return errf("this function introduces a cycle", s.cycleDetectedError(cycle))
 		}
-		c.isVerifiedAcyclic = true
+		s.isVerifiedAcyclic = true
 	}
-	c.nodes = append(c.nodes, n)
+	s.nodes = append(s.nodes, n)
 
 	// Record introspection info for caller if Info option is specified
 	if info := opts.Info; info != nil {
@@ -752,11 +804,11 @@ func (c *Container) provide(ctor interface{}, opts provideOptions) error {
 }
 
 // Builds a collection of all result types produced by this constructor.
-func (c *Container) findAndValidateResults(n *constructorNode) (map[key]struct{}, error) {
+func (s *Scope) findAndValidateResults(n *constructorNode) (map[key]struct{}, error) {
 	var err error
 	keyPaths := make(map[key]string)
 	walkResult(n.ResultList(), connectionVisitor{
-		c:        c,
+		s:        s,
 		n:        n,
 		err:      &err,
 		keyPaths: keyPaths,
@@ -776,7 +828,7 @@ func (c *Container) findAndValidateResults(n *constructorNode) (map[key]struct{}
 // Visits the results of a node and compiles a collection of all the keys
 // produced by that node.
 type connectionVisitor struct {
-	c *Container
+	s *Scope
 	n *constructorNode
 
 	// If this points to a non-nil value, we've already encountered an error
@@ -861,7 +913,7 @@ func (cv connectionVisitor) checkKey(k key, path string) error {
 			"already provided by %v", conflict,
 		)
 	}
-	if ps := cv.c.providers[k]; len(ps) > 0 {
+	if ps := cv.s.providers[k]; len(ps) > 0 {
 		cons := make([]string, len(ps))
 		for i, p := range ps {
 			cons[i] = fmt.Sprint(p.Location())

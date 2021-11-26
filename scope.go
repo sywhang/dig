@@ -20,36 +20,39 @@
 
 package dig
 
-import (
-	"bytes"
-	"flag"
-	"io/ioutil"
-	"path/filepath"
-	"testing"
+import "reflect"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-)
+// newScope creates an empty new Scope.
+func (s *Scope) cloneScope() *Scope {
+	// TODO (sungyoon): It may be possible to do a "lazy"
+	// resolution of the graph by keeping just deltas and
+	// applying it when it's needed, rather than dumbly
+	// copying over everything at once.
+	// Copy over all the providers
+	providersCopy := make(map[key][]*constructorNode, len(s.providers))
+	nodesCopy := make([]*constructorNode, len(s.nodes))
+	valuesCopy := make(map[key]reflect.Value, len(s.values))
+	groupsCopy := make(map[key][]reflect.Value, len(groups))
 
-var generate = flag.Bool("generate", false, "generates output to testdata/ if set")
-
-func VerifyVisualization(t *testing.T, testname string, c *Container, opts ...VisualizeOption) {
-	var b bytes.Buffer
-	require.NoError(t, Visualize(c.scope, &b, opts...))
-
-	dotFile := filepath.Join("testdata", testname+".dot")
-
-	if *generate {
-		err := ioutil.WriteFile(dotFile, b.Bytes(), 0644)
-		require.NoError(t, err)
-		return
+	return &Scope{
+		parentScope: parent,
 	}
+}
 
-	wantBytes, err := ioutil.ReadFile(dotFile)
-	require.NoError(t, err)
+// Scope creates a new empty Scope from the
+// current Scope's context.
+func (s *Scope) Scope(opts ...ScopeOption) *Scope {
+	newS := s.cloneScope()
+	s.childScopes = append(s.childScopes, newS)
+	return newS
+}
 
-	got := b.String()
-	want := string(wantBytes)
-	assert.Equal(t, want, got,
-		"Output did not match. Make sure you updated the testdata by running 'go test -generate'")
+// GetScopesUntilRoot creates a list of Scopes
+// have to traverse through until the current node.
+func (s *Scope) GetScopesUntilRoot() []*Scope {
+	if s.parentScope != nil {
+		return append(s.parentScope.GetScopesUntilRoot(), s)
+	} else {
+		return nil
+	}
 }

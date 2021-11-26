@@ -227,7 +227,7 @@ func getParamOrder(gh *graphHolder, param param) []int {
 	var orders []int
 	switch p := param.(type) {
 	case paramSingle:
-		providers := gh.c.getValueProviders(p.Name, p.Type)
+		providers := gh.s.getValueProviders(p.Name, p.Type)
 		for _, provider := range providers {
 			v := gh.orders[key{t: provider.CType()}]
 			orders = append(orders, v)

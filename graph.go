@@ -128,8 +128,8 @@ var _graphTmpl = template.Must(
 
 // Visualize parses the graph in Container c into DOT format and writes it to
 // io.Writer w.
-func Visualize(c *Container, w io.Writer, opts ...VisualizeOption) error {
-	dg := c.createGraph()
+func Visualize(s *Scope, w io.Writer, opts ...VisualizeOption) error {
+	dg := s.createGraph()
 
 	var options visualizeOptions
 	for _, o := range opts {
@@ -161,10 +161,10 @@ func CanVisualizeError(err error) bool {
 	return false
 }
 
-func (c *Container) createGraph() *dot.Graph {
+func (s *Scope) createGraph() *dot.Graph {
 	dg := dot.NewGraph()
 
-	for _, n := range c.nodes {
+	for _, n := range s.nodes {
 		dg.AddCtor(newDotCtor(n), n.paramList.DotParam(), n.resultList.DotResult())
 	}
 
