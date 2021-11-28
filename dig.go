@@ -712,11 +712,13 @@ func (c *Container) Scope(opt ...ScopeOption) *Scope {
 	return c.scope.Scope(opt...)
 }
 
-func (s *Scope) newGraphNode(k key, wrapped interface{}) {
+// newGraphNode will add the provided constructor as a new graph
+// node to this Scope and all of its descendent Scopes.
+func (s *Scope) newGraphNode(k key, ctor interface{}) {
 	order := len(s.gh.allNodes)
 	s.gh.allNodes = append(s.gh.allNodes, &graphNode{
 		Order:   order,
-		Wrapped: wrapped,
+		Wrapped: ctor,
 	})
 	s.gh.orders[k] = order
 }

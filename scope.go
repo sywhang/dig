@@ -29,13 +29,13 @@ func (s *Scope) cloneScope() *Scope {
 	// applying it when it's needed, rather than dumbly
 	// copying over everything at once.
 	// Copy over all the providers
-	providersCopy := make(map[key][]*constructorNode, len(s.providers))
-	nodesCopy := make([]*constructorNode, len(s.nodes))
-	valuesCopy := make(map[key]reflect.Value, len(s.values))
-	groupsCopy := make(map[key][]reflect.Value, len(groups))
 
 	return &Scope{
-		parentScope: parent,
+		parentScope: s,
+		providers:   make(map[key][]*constructorNode),
+		nodes:       make([]*constructorNode, 0),
+		values:      make(map[key]reflect.Value),
+		groups:      make(map[key][]reflect.Value),
 	}
 }
 
