@@ -62,7 +62,6 @@ func (s *Scope) Scope(opts ...ScopeOption) *Scope {
 func (s *Scope) GetScopesUntilRoot() []*Scope {
 	if s.parentScope != nil {
 		return append(s.parentScope.GetScopesUntilRoot(), s)
-	} else {
-		return nil
 	}
+	return nil
 }

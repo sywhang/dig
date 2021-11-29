@@ -336,6 +336,7 @@ type Scope struct {
 	deferAcyclicVerification bool
 }
 
+// Container ... TODO
 type Container struct {
 	// Defer acyclic check on provide until Invoke.
 	deferAcyclicVerification bool
@@ -351,10 +352,12 @@ type Container struct {
 	invokerFn invokerFn
 }
 
+// Provide ... TODO
 func (c *Container) Provide(constructor interface{}, opts ...ProvideOption) error {
 	return c.scope.Provide(constructor, opts...)
 }
 
+// Invoke ... TODO
 func (c *Container) Invoke(constructor interface{}, opts ...InvokeOption) error {
 	return c.scope.Invoke(constructor, opts...)
 }
@@ -363,6 +366,11 @@ func (c *Container) createGraph() *dot.Graph {
 	return c.scope.createGraph()
 }
 
+// graphHolder represents the dependency graph for a Container. Specifically,
+// it saves constructorNodes and paramGroupedSlices (value groups) as graphNodes
+// and implements the Graph interface defined in internal/graph to run graph
+// algorithms on it. It has a 1-to-1 correspondence with a Container whose graph
+// it represents.
 type graphHolder struct {
 	// all the nodes defined in the graph.
 	allNodes []*graphNode
@@ -507,6 +515,7 @@ func New(opts ...Option) *Container {
 func DeferAcyclicVerification() Option {
 	return optionFunc(func(c *Container) {
 		c.deferAcyclicVerification = true
+		c.scope.deferAcyclicVerification = true
 	})
 }
 
