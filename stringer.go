@@ -28,31 +28,10 @@ import (
 
 // String representation of the entire Container
 func (c *Container) String() string {
-	s := c.scope
-	b := &bytes.Buffer{}
-	fmt.Fprintln(b, "nodes: {")
-	for k, vs := range s.providers {
-		for _, v := range vs {
-			fmt.Fprintln(b, "\t", k, "->", v)
-		}
-	}
-	fmt.Fprintln(b, "}")
-
-	fmt.Fprintln(b, "values: {")
-	for k, v := range s.values {
-		fmt.Fprintln(b, "\t", k, "=>", v)
-	}
-	for k, vs := range s.groups {
-		for _, v := range vs {
-			fmt.Fprintln(b, "\t", k, "=>", v)
-		}
-	}
-	fmt.Fprintln(b, "}")
-
-	return b.String()
+	return c.scope.String()
 }
 
-// String representation of the entire Container
+// String representation of the Scope.
 func (s *Scope) String() string {
 	b := &bytes.Buffer{}
 	fmt.Fprintln(b, "nodes: {")

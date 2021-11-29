@@ -525,6 +525,7 @@ func DeferAcyclicVerification() Option {
 func setRand(r *rand.Rand) Option {
 	return optionFunc(func(c *Container) {
 		c.rand = r
+		c.scope.rand = r
 	})
 }
 
