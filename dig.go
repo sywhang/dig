@@ -533,9 +533,9 @@ func setRand(r *rand.Rand) Option {
 func DryRun(dry bool) Option {
 	return optionFunc(func(c *Container) {
 		if dry {
-			c.invokerFn = dryInvoker
+			c.scope.invokerFn = dryInvoker
 		} else {
-			c.invokerFn = defaultInvoker
+			c.scope.invokerFn = defaultInvoker
 		}
 	})
 }
