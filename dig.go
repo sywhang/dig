@@ -600,6 +600,36 @@ func (s *Scope) getProviders(k key) []provider {
 	return providers
 }
 
+// addProviders adds the given node as a provider of the given keys
+// to this Scope's providers
+func (s *Scope) addProviders(keys map[key]struct{}, n *constructorNode) {
+	for k := range keys {
+		s.providers[k] = append(s.providers[k], n)
+	}
+}
+
+// verifyAcyclic checks whether the given Scope's dependency graph, as well
+// as all of its descendent Scopes' dependency graphs are acyclic.
+func (s *Scope) verifyAcyclic() error {
+	// verify the current Scope is acyclic.
+	s.isVerifiedAcyclic = false
+	if !s.deferAcyclicVerification {
+		if ok, cycle := graph.IsAcyclic(s.gh); !ok {
+			return errf("this function introduces a cycle", s.cycleDetectedError(cycle))
+		}
+		s.isVerifiedAcyclic = true
+	}
+
+	// Verify that all of the children Scopes are acyclic as well.
+	for _, childScope := range s.childScopes {
+		if err := childScope.verifyAcyclic(); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // invokerFn return a function to run when calling function provided to Provide or Invoke. Used for
 // running container in dry mode.
 func (c *Container) invoker() invokerFn {
@@ -715,12 +745,18 @@ func (c *Container) Scope(opt ...ScopeOption) *Scope {
 // newGraphNode will add the provided constructor as a new graph
 // node to this Scope and all of its descendent Scopes.
 func (s *Scope) newGraphNode(k key, ctor interface{}) {
+	// Add to this Scope's graph.
 	order := len(s.gh.allNodes)
 	s.gh.allNodes = append(s.gh.allNodes, &graphNode{
 		Order:   order,
 		Wrapped: ctor,
 	})
 	s.gh.orders[k] = order
+
+	// Add to this Scope's descendent Scopes' graphs.
+	for _, childScope := range s.childScopes {
+		childScope.newGraphNode(k, ctor)
+	}
 }
 
 func (s *Scope) cycleDetectedError(cycle []int) error {
@@ -763,17 +799,13 @@ func (s *Scope) provide(ctor interface{}, opts provideOptions) error {
 		return errf("%v must provide at least one non-error type", ctype)
 	}
 
-	for k := range keys {
-		s.providers[k] = append(s.providers[k], n)
+	s.addProviders(keys, n)
+
+	// Run cycle detection.
+	if err := s.verifyAcyclic(); err != nil {
+		return err
 	}
 
-	s.isVerifiedAcyclic = false
-	if !s.deferAcyclicVerification {
-		if ok, cycle := graph.IsAcyclic(s.gh); !ok {
-			return errf("this function introduces a cycle", s.cycleDetectedError(cycle))
-		}
-		s.isVerifiedAcyclic = true
-	}
 	s.nodes = append(s.nodes, n)
 
 	// Record introspection info for caller if Info option is specified

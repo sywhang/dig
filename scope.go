@@ -28,15 +28,25 @@ func (s *Scope) cloneScope() *Scope {
 	// resolution of the graph by keeping just deltas and
 	// applying it when it's needed, rather than dumbly
 	// copying over everything at once.
-	// Copy over all the providers
 
-	return &Scope{
+	child := &Scope{
 		parentScope: s,
 		providers:   make(map[key][]*constructorNode),
 		nodes:       make([]*constructorNode, 0),
 		values:      make(map[key]reflect.Value),
 		groups:      make(map[key][]reflect.Value),
+		invokerFn:   s.invokerFn,
 	}
+
+	// child should hold a separate graph holder
+	gh := &graphHolder{
+		orders: make(map[key]int),
+		s:      child,
+	}
+
+	child.gh = gh
+
+	return child
 }
 
 // Scope creates a new empty Scope from the
