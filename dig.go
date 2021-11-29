@@ -338,18 +338,9 @@ type Scope struct {
 
 // Container ... TODO
 type Container struct {
-	// Defer acyclic check on provide until Invoke.
-	deferAcyclicVerification bool
-
 	// scope is the "root" Scope that represents the
 	// root of the scope tree.
 	scope *Scope
-
-	// Source of randomness.
-	rand *rand.Rand
-
-	// invokerFn calls a function with arguments provided to Provide or Invoke.
-	invokerFn invokerFn
 }
 
 // Provide ... TODO
@@ -487,9 +478,7 @@ func New(opts ...Option) *Container {
 	}
 
 	c := &Container{
-		scope:                    s,
-		deferAcyclicVerification: false,
-		rand:                     s.rand,
+		scope: s,
 	}
 
 	gh := &graphHolder{
@@ -514,7 +503,6 @@ func New(opts ...Option) *Container {
 // performance improvements by initializing the container with this option.
 func DeferAcyclicVerification() Option {
 	return optionFunc(func(c *Container) {
-		c.deferAcyclicVerification = true
 		c.scope.deferAcyclicVerification = true
 	})
 }
@@ -524,7 +512,6 @@ func DeferAcyclicVerification() Option {
 // This will help provide determinism during tests.
 func setRand(r *rand.Rand) Option {
 	return optionFunc(func(c *Container) {
-		c.rand = r
 		c.scope.rand = r
 	})
 }
@@ -643,7 +630,7 @@ func (s *Scope) verifyAcyclic() error {
 // invokerFn return a function to run when calling function provided to Provide or Invoke. Used for
 // running container in dry mode.
 func (c *Container) invoker() invokerFn {
-	return c.invokerFn
+	return c.scope.invoker()
 }
 
 func (s *Scope) invoker() invokerFn {
