@@ -24,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestScopeTree(t *testing.T) {
@@ -43,10 +44,54 @@ func TestScopeTree(t *testing.T) {
 		assert.NotEqual(t, s3.parentScope, s2)
 	})
 
-	t.Run("GetScopesUntilRoot returns scopes in tree path in order of distance from root", func(t *testing.T) {
+	t.Run("getScopesUntilRoot returns scopes in tree path in order of distance from root", func(t *testing.T) {
 		t.Parallel()
 
-		assert.Equal(t, []*Scope{c.scope, s1, s3}, s3.GetScopesUntilRoot())
-		assert.Equal(t, []*Scope{c.scope, s1, s3}, s3.GetScopesUntilRoot())
+		assert.Equal(t, []*Scope{c.scope, s1, s3}, s3.getScopesUntilRoot())
+		assert.Equal(t, []*Scope{c.scope, s1, s3}, s3.getScopesUntilRoot())
+	})
+}
+
+func TestScopedOperations(t *testing.T) {
+	t.Parallel()
+
+	t.Run("verify private provides", func(t *testing.T) {
+		c := New()
+		s := c.Scope()
+		type A struct{}
+
+		f := func(a *A) {
+			assert.NotEqual(t, nil, a)
+		}
+
+		require.NoError(t, s.Provide(func() *A { return &A{} }))
+		assert.NoError(t, s.Invoke(f))
+		assert.Error(t, c.Invoke(f))
+	})
+
+	t.Run("verify private provides inherits", func(t *testing.T) {
+		type A struct{}
+		type B struct{}
+
+		useA := func(a *A) {
+			assert.NotEqual(t, nil, a)
+		}
+		useB := func(b *B) {
+			assert.NotEqual(t, nil, b)
+		}
+
+		c := New()
+		c.Provide(func() *A { return &A{} })
+
+		child := c.Scope()
+		child.Provide(func() *B { return &B{} })
+		assert.NoError(t, child.Invoke(useA))
+		assert.NoError(t, child.Invoke(useB))
+
+		grandchild := child.Scope()
+
+		assert.NoError(t, grandchild.Invoke(useA))
+		assert.NoError(t, grandchild.Invoke(useB))
+		assert.Error(t, c.Invoke(useB))
 	})
 }

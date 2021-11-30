@@ -57,11 +57,11 @@ func (s *Scope) Scope(opts ...ScopeOption) *Scope {
 	return newS
 }
 
-// GetScopesUntilRoot creates a list of Scopes
+// getScopesUntilRoot creates a list of Scopes
 // have to traverse through until the current node.
-func (s *Scope) GetScopesUntilRoot() []*Scope {
+func (s *Scope) getScopesUntilRoot() []*Scope {
 	if s.parentScope != nil {
-		return append(s.parentScope.GetScopesUntilRoot(), s)
+		return append(s.parentScope.getScopesUntilRoot(), s)
 	}
 	return []*Scope{s}
 }

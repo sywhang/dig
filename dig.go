@@ -589,11 +589,21 @@ func (s *Scope) getGroupProviders(name string, t reflect.Type) []provider {
 }
 
 func (s *Scope) getProviders(k key) []provider {
-	nodes := s.providers[k]
+	// To look up the providers for a given key, a Scope
+	// needs to first iterate through its ancestor Scopes
+	// down to itself.
+	var nodes []*constructorNode
+
+	allScopes := s.getScopesUntilRoot()
+	for _, s := range allScopes {
+		nodes = append(nodes, s.providers[k]...)
+	}
+
 	providers := make([]provider, len(nodes))
 	for i, n := range nodes {
 		providers[i] = n
 	}
+
 	return providers
 }
 
@@ -709,8 +719,8 @@ func (s *Scope) Invoke(function interface{}, opts ...InvokeOption) error {
 	}
 
 	if !s.isVerifiedAcyclic {
-		if ok, cycle := graph.IsAcyclic(s.gh); !ok {
-			return errf("cycle detected in dependency graph", s.cycleDetectedError(cycle))
+		if err := s.verifyAcyclic(); err != nil {
+			return err
 		}
 	}
 
