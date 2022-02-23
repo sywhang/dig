@@ -100,6 +100,12 @@ type containerStore interface {
 	// Returns a slice containing all known types.
 	knownTypes() []reflect.Type
 
+	// Returns whether the constructor was called in the scope of the container.
+	providerCalled(*constructorNode) bool
+
+	// Sets the given constructor as called in the scope of the container.
+	setProviderCalled(*constructorNode)
+
 	// Retrieves the value with the provided name and type, if any.
 	getValue(name string, t reflect.Type) (v reflect.Value, ok bool)
 

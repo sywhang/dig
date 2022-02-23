@@ -43,9 +43,13 @@ type Scope struct {
 
 	// Name of the Scope
 	name string
+
 	// Mapping from key to all the constructor node that can provide a value for that
 	// key.
 	providers map[key][]*constructorNode
+
+	// tracks whether each provider was called in this Scope.
+	providersCalled map[*constructorNode]bool
 
 	// Mapping from key to all decorator nodes that decorates a value for that key.
 	decorators map[key][]*decoratorNode
@@ -92,6 +96,7 @@ type Scope struct {
 func newScope() *Scope {
 	s := &Scope{
 		providers:       make(map[key][]*constructorNode),
+		providersCalled: make(map[*constructorNode]bool),
 		decorators:      make(map[key][]*decoratorNode),
 		values:          make(map[key]reflect.Value),
 		decoratedValues: make(map[key]reflect.Value),
@@ -166,6 +171,17 @@ func (s *Scope) knownTypes() []reflect.Type {
 	}
 	sort.Sort(byTypeName(types))
 	return types
+}
+
+func (s *Scope) providerCalled(n *constructorNode) bool {
+	if called, ok := s.providersCalled[n]; ok {
+		return called
+	}
+	return false
+}
+
+func (s *Scope) setProviderCalled(n *constructorNode) {
+	s.providersCalled[n] = true
 }
 
 func (s *Scope) getValue(name string, t reflect.Type) (v reflect.Value, ok bool) {

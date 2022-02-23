@@ -273,7 +273,8 @@ func (ps paramSingle) Build(c containerStore, decorating bool) (reflect.Value, e
 		return v, nil
 	}
 
-	if v, ok := ps.getValue(c); ok {
+	// Check whether the value is already cached in the current scope.
+	if v, ok := c.getValue(ps.Name, ps.Type); ok {
 		return v, nil
 	}
 

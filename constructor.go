@@ -45,9 +45,6 @@ type constructorNode struct {
 	// id uniquely identifies the constructor that produces a node.
 	id dot.CtorID
 
-	// Whether the constructor owned by this node was already called.
-	called bool
-
 	// Type information about constructor parameters.
 	paramList paramList
 
@@ -125,7 +122,7 @@ func (n *constructorNode) String() string {
 // Call calls this constructor if it hasn't already been called and
 // injects any values produced by it into the provided container.
 func (n *constructorNode) Call(c containerStore) error {
-	if n.called {
+	if c.providerCalled(n) {
 		return nil
 	}
 
@@ -155,7 +152,7 @@ func (n *constructorNode) Call(c containerStore) error {
 	// the rest of the graph to instantiate the dependencies of this
 	// container.
 	receiver.Commit(n.s)
-	n.called = true
+	c.setProviderCalled(n)
 
 	return nil
 }
